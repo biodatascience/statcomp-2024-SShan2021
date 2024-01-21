@@ -260,6 +260,10 @@ little.n <- n/2
 set.seed(1)
 x <- matrix(rnorm(m*n),nrow=m,ncol=n)
 f <- gl(2,little.n)
+
+dim(x[,f == "1"])
+table(f) #1 
+dim(x) #400 rows and 50 columns 
 ```
 
 
@@ -280,23 +284,55 @@ getT0 <- function(x, f) {
   `genefilter::rowttests` which will quickly perform this operation,
   but I want you to write your own function using simple R functions
   like `rowSums`, etc.)
+  
+Recall that the t-statistic for two-sample t-test with equal variance is:
+$$t = \frac{(\bar{x}_1 - \bar{x}_2) - (\mu_1 - \mu_2)}{ \sqrt{s_p^2 (\frac{1}{n_1} + \frac{1}{n_2})}}$$
+
+where $$s_p^2 = \frac{(n_1 - 1) s_1^2 + (n_2 - 1)s_2^2}{n_1 + n_2 - 2}$$
+where $s_1$ and $s_2$ are the sample standard deviations. 
+
+Citation for equations: https://www.theopeneducator.com/doe/hypothesis-Testing-Inferential-Statistics-Analysis-of-Variance-ANOVA/Two-Sample-T-Test-Equal-Variance
 
 ```{r}
 ############################
 #MY FUNCTION 
 ############################
+
 getT <- function(x, f){
   
-  #using apply instead of sapply 
-  ts <- apply(x, MARGIN = 1, 
-              function(x_col) t.test(x_col ~ f, 
-                                     var.equal = TRUE)$statistic)
+  #separate into the two groups 
+  group_1 <- x[,f == "1"]
+  group_2 <- x[,f == "2"]
   
-  #return the output 
-  ts 
+  #get the size for the two groups 
+  n_1 <- dim(group_1)[2]
+  n_2 <- dim(group_2)[2]
+
+  #mean of the the two groups 
+  mean_1 <- rowSums(group_1)/n_1
+  mean_2 <- rowSums(group_2)/n_2
   
+  #sample standard deviation
+  std_1 <- apply(group_1, MARGIN = 1, FUN = sd)
+  std_2 <- apply(group_2, MARGIN = 1, FUN = sd)
+  
+  #pooled standard error 
+  std_error_sqrd <- ((n_1-1)*std_1^2 + (n_2-1)*std_2^2)/(n_1+n_2-2)
+  
+  #numerator: t-statistic
+  num <- mean_1-mean_2
+  
+  #denominator: t-statistic 
+  denom <- sqrt(std_error_sqrd*((1/n_1)+(1/n_2)))
+  
+  #calculate the t-statistic
+  t_stat <- num/denom
+  
+  #return the t-statistic 
+  t_stat
 }
 ```
+
   
 ```{r}
 ############################
@@ -315,5 +351,10 @@ all.equal(getT0_output, getT_outcome)
 * Benchmark `getT` and `getT0`. How much faster is `getT`?
 
 ```{r}
+############################
+#BENCHMARK 
+############################
+microbenchmark(getT0(x, f), getT(x, f))
 
+#getT is 20 times faster than getT0
 ```
