@@ -309,8 +309,8 @@ getT <- function(x, f){
   mean_2 <- rowSums(group_2)/n_2
   
   #sample standard deviation
-  std_1 <- apply(group_1, MARGIN = 1, FUN = sd)
-  std_2 <- apply(group_2, MARGIN = 1, FUN = sd)
+  std_1 <- sqrt(rowSums((group_1 - mean_1) ^ 2)/(n_1 - 1))
+  std_2 <- sqrt(rowSums((group_2 - mean_2) ^ 2)/(n_2 - 1))
   
   #pooled standard error 
   std_error_sqrd <- ((n_1-1)*std_1^2 + (n_2-1)*std_2^2)/(n_1+n_2-2)
@@ -352,5 +352,5 @@ all.equal(getT0_output, getT_outcome)
 ############################
 microbenchmark(getT0(x, f), getT(x, f))
 
-#getT is 20 times faster than getT0
+#getT is 1000 times faster than getT0
 ```
