@@ -3,6 +3,8 @@
 ###########################
 library(devtools)
 library(usethis)
+library(testthat)
+library(bios735)
 
 ###########################
 #build a shareable package
@@ -13,3 +15,18 @@ build("/Users/sophshan/Library/CloudStorage/OneDrive-UniversityofNorthCarolinaat
 #put up the documentation
 ###########################
 devtools::document()
+
+###########################
+#initialize package tests
+###########################
+use_test("getT")
+
+###########################
+#check files
+###########################
+test_package("bios735")
+
+###########################
+#put output of package
+###########################
+check(manual=TRUE)
