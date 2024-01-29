@@ -22,6 +22,9 @@
 #' @export
 getT <- function(x, f){
 
+  #check for errors
+  #browser()
+
   #separate into the two groups
   group_1 <- x[,f == "1"]
   group_2 <- x[,f == "2"]
