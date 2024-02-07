@@ -11,13 +11,28 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// rcpp_hello_world
-List rcpp_hello_world();
-RcppExport SEXP _bios735_rcpp_hello_world() {
+// armadillo_solve
+arma::mat armadillo_solve(arma::mat A, arma::vec b);
+RcppExport SEXP _bios735_armadillo_solve(SEXP ASEXP, SEXP bSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(rcpp_hello_world());
+    Rcpp::traits::input_parameter< arma::mat >::type A(ASEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type b(bSEXP);
+    rcpp_result_gen = Rcpp::wrap(armadillo_solve(A, b));
+    return rcpp_result_gen;
+END_RCPP
+}
+// col_ridge_2
+arma::mat col_ridge_2(arma::mat Y, arma::mat X, arma::vec lambda);
+RcppExport SEXP _bios735_col_ridge_2(SEXP YSEXP, SEXP XSEXP, SEXP lambdaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< arma::mat >::type X(XSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type lambda(lambdaSEXP);
+    rcpp_result_gen = Rcpp::wrap(col_ridge_2(Y, X, lambda));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -32,10 +47,24 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// randomWalk_2
+List randomWalk_2(int niter, double lambda);
+RcppExport SEXP _bios735_randomWalk_2(SEXP niterSEXP, SEXP lambdaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type niter(niterSEXP);
+    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    rcpp_result_gen = Rcpp::wrap(randomWalk_2(niter, lambda));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_bios735_rcpp_hello_world", (DL_FUNC) &_bios735_rcpp_hello_world, 0},
+    {"_bios735_armadillo_solve", (DL_FUNC) &_bios735_armadillo_solve, 2},
+    {"_bios735_col_ridge_2", (DL_FUNC) &_bios735_col_ridge_2, 3},
     {"_bios735_one_or_exp", (DL_FUNC) &_bios735_one_or_exp, 1},
+    {"_bios735_randomWalk_2", (DL_FUNC) &_bios735_randomWalk_2, 2},
     {NULL, NULL, 0}
 };
 
