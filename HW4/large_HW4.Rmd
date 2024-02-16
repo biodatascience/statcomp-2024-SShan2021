@@ -1,0 +1,326 @@
+---
+title: "Homework 4 - Working with large datasets"
+author: "Sophie Shan"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: html_document
+---
+
+```{r}
+#load libraries 
+library(data.table)
+library(tidyverse)
+library(ggplot2)
+library(microbenchmark)
+library(Matrix)
+```
+
+# Question 1 - benchmark data.table's grouping on real data
+
+Download the merged College Scorecard data from (2009-2016) from here: <https://www.dropbox.com/s/ex0u45rlrjr6h7e/Scorecard_2009-2016.csv?dl=0>
+
+This file is the final merged form of the original data that was discussed in class, using the shell operation. Please use this file for the subsequent questions. Excluding the header, there should be 67,418 rows in this file. 
+
+```{r}
+#load the data
+scores <- fread("/Users/sophshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW4/Scorecard_2009-2016.csv")
+
+#check dimensions
+dim(scores) 
+```
+
+
+In class we performed some simple subsetting and grouping
+operations. The lecture notes use a previous version of the dataset,
+and since they were compiled, `CONTROL` is now integer valued, and
+the `TUITFTE` and `SAT_AVG` columns will need to be coerced to a
+numeric using `as.numeric`, before you can work with it. (This will
+give a warning about NAs introduced, which you should ignore.)
+
+Also you should convert `CONTROL` to a factor, and then change the
+levels 1,2,3 to instead `pub`,`pnp`,`pfp`.
+
+From the data dictionary, we have: 
+
+| C | Value              |
+|---|--------------------|
+| 1 | Public             |
+| 2 | Private nonprofit  |
+| 3 | Private for-profit |
+
+```{r}
+#coerce necessary columns to numeric
+scores$CONTROL <- as.numeric(scores$CONTROL)
+scores$TUITFTE <- as.numeric(scores$TUITFTE)
+scores$SAT_AVG <- as.numeric(scores$SAT_AVG)
+
+#coerce CONTROL and change levels 
+scores <- scores[, CONTROL := factor(CONTROL, levels = c(1, 2, 3), labels = c("pub", "pnp", "pfp"))]
+```
+
+First, tabulate the number of schools you have in the table for each
+value of `CONTROL` (you can use data.table or base R for this). Also
+tabulate, the number of schools for each value of `CONTROL` that have
+non-NA values for both `TUITFTE` *and* `SAT_AVG`.
+
+```{r}
+#Number of schools for each value of CONTROL
+scores[ , .N, by = CONTROL]
+
+#Number of schools for CONTROL with non-NA values for both TUITFTE and SAT_AVG
+scores[(is.na(TUITFTE) == F) &
+         (is.na(SAT_AVG) == F), .N, by = CONTROL]
+```
+
+Then, compute the mean and SD tuition per FTE and the mean and SD average
+SAT for each of the classes of ownership (pub, pnp, pfp), (1) using
+data.table, and (2) using `aggregate` with the columns `TUITFTE`,
+`SAT_AVG`, `CONTROL` and your NA-removed mean and sd function. Confirm
+by eye that they give the same result and compare speed. You can
+benchmark with `times=10`.
+
+A typical use of aggregate is:
+
+```
+aggregate(df[,c("col1","col2")], df[,"grouping"], function(x) ...)
+```
+
+```{r}
+#write functions for NA-remove mean, sd
+mean2 <- function(x){
+  mean(x, na.rm = TRUE)
+}
+sd2 <- function(x){
+  sd(x, na.rm = TRUE)
+}
+
+#(1) data.table 
+m_1 <- scores[ , .(mean_tuition = mean2(TUITFTE),
+            sd_tuition = sd2(TUITFTE),
+            mean_SAT = mean2(SAT_AVG),
+            sd_SAT = sd2(SAT_AVG))
+        , by = CONTROL]
+m_1
+
+#(2) aggregate 
+m_2 <- aggregate(scores[,c("TUITFTE","SAT_AVG")],
+          by = scores[,"CONTROL"], 
+          FUN = function(x) c(mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE)))
+m_2 
+
+#Compare 
+m_3 <- microbenchmark(scores[ , .(mean_tuition = mean2(TUITFTE),
+            sd_tuition = sd2(TUITFTE),
+            mean_SAT = mean2(SAT_AVG),
+            sd_SAT = sd2(SAT_AVG))
+        , by = CONTROL], aggregate(scores[,c("TUITFTE","SAT_AVG")],
+          by = scores[,"CONTROL"], 
+          FUN = function(x) c(mean = mean(x, na.rm = TRUE), sd = sd(x, na.rm = TRUE))), times=10)
+levels(m_3$expr) <- c("data.table" , "aggregate")
+m_3
+```
+# Question 2- doing more with "by" in data.table
+
+Make a subset of the data, called `scores.sub`, which has complete
+data for both `TUITFTE` and `SAT_AVG`. You can look up the `na.omit`
+function in data.table.
+
+```{r}
+#Complete data for both TUITFTE and SAT_AVG 
+scores.sub <- na.omit(scores, cols = c("TUITFTE", "SAT_AVG"))
+```
+
+Make a plot of `SAT_AVG` over `TUITFTE`, and color the points by
+`CONTROL`, with x-limits of [0-40,000] and y-limits of [500-1600].
+
+```{r}
+#Plot 
+ggplot(data = scores.sub) +
+  geom_point(aes(x = TUITFTE, 
+                 y = SAT_AVG,
+                 group = CONTROL,
+                 color = CONTROL)) + 
+  coord_cartesian(xlim = c(0, 40000), ylim = c(500, 1600))
+```
+
+Now tabulate the number of schools that have tuition per FTE over
+20,000 and/or average SAT over 1200, grouped by ownership
+category. Your output should be sorted on the groupings you define, so
+the first row should be public, TUITFTE < 20,000 and SAT_AVG < 1200,
+and so on for 12 rows. See the Introduction vignette for data.table
+for insight on how to perform this operation. Hint: "sorted by" and
+"expressions in by".
+
+```{r}
+
+scores.sub[, 
+           .N, 
+           .(CONTROL, TUITFTE>20000, SAT_AVG>1200)]
+
+```
+
+# Question 3 - subsets of data 
+
+Use data.table to obtain the tuition per FTE and average SAT for the
+two schools with the top average SAT within each ownership
+group. Hint: I performed this in two steps, first by ordering
+`scores.sub`, and then using "subset of data". Make sure to avoid
+returning all of the columns...
+
+```{r}
+#ordering scores.sub by average SAT within each ownership group
+p1 <- scores.sub[order(CONTROL, -SAT_AVG)]
+
+#get the two schools with top average SAT within each ownership group 
+p1[, print(.SD[1:2]), by = CONTROL, .SDcols = c("UNITID", "INSTNM", "SAT_AVG", "CONTROL", "TUITFTE")]
+
+```
+
+# Question 4 - MovieLens sparse dataset
+
+As we mentioned in class, one common form of sparse data is when we
+have information about individuals and their interaction with a large
+set of items (e.g. movies, products, etc.). The interactions may be
+ratings or purchases. One publicly available dataset of movie ratings
+is *MovieLens*, which has a 1 MB download available here:
+
+<https://grouplens.org/datasets/movielens/>
+
+Download the `ml-latest-small.zip` dataset. Take a look at each of the
+CSV files. How many of the movies have the "Comedy" genre attached to
+them? 
+
+```{r}
+#load the csv files 
+links <- fread("/Users/sophshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW4/ml-latest-small/links.csv")
+movies <- fread("/Users/sophshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW4/ml-latest-small/movies.csv")
+ratings <- fread("/Users/sophshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW4/ml-latest-small/ratings.csv")
+tags <- fread("/Users/sophshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW4/ml-latest-small/tags.csv")
+```
+
+```{r}
+#get all matches with "Comedy" in string
+partial_matches <- grep("Comedy", movies$genres, value = TRUE)
+
+length(partial_matches) 
+#3756 movies have the "Comedy" genre attached to them. 
+```
+
+Build a sparse matrix of the movies by users, and just put a 1 for if
+the user rated the movie (don't actually record the value of the
+rating itself). You can do this by specifying `x=1`. In
+the abstract, this is a very large matrix, but this is because the
+user IDs go up to nearly 200,000. Remove the rows of the sparse matrix
+where there are no ratings to produce a sparse matrix that is roughly
+~10,000 by ~600. Use `summary` to investigate the range, quartiles,
+etc. of number of movies rated by each user.
+
+```{r}
+#join together movies and users 
+together <- ratings %>%
+  left_join(movies) %>%
+  select(userId, movieId, rating)
+
+#pivot from long to wide 
+together_wide <- dcast(together, movieId ~ userId, value.var = "rating",
+                       fun.aggregate = function(x) { 1 }, fill = 0)
+dim(together_wide)
+
+#make a sparse matrix (delete first column)
+together_wide_sparse <- Matrix(as.matrix(together_wide[,-1, with = FALSE]), 
+                               sparse = TRUE)
+together_wide_sparse[1:25, 1:25]
+
+#get the total number of movies rated by each user
+number_of_movies <- colSums(together_wide_sparse)
+summary(number_of_movies)
+```
+
+There are multiple ways to compute the SVD of a sparse matrix. If
+after manipulating the matrix in its sparse form, it is not too large
+(as in this case), one can just run `svd` which will coerce the matrix
+into a dense one. Or there are special functions in packages which are
+designed to compute (potentially sparse) SVD solutions on sparse
+matrices. Two such functions are `sparsesvd::sparsesvd` and
+`irlba::ssvd`. You can choose any of these three methods, in either
+case you should specify to return only 3 left singular vectors
+(`nu=3`, `rank=3`, or `k=3`, respectively). For `ssvd` in the irlba
+package, you should specify that the number of nonzero components
+in the right singular vectors should be all (the number of rows of x),
+which will give a warning that you should ignore. All of these methods
+will produce roughly the same decomposition, with arbitrary sign
+changes on the singular vectors. The sparse versions are about 1000
+times faster, as they do not coerce the matrix into a dense version.
+
+```{r}
+#install sparsesvd package
+#install.packages("sparsesvd")
+
+library("sparsesvd")
+```
+Compute the SVD of the matrix using one of the methods above.
+
+```{r}
+#compute SVD 
+together_SVD <- sparsesvd::sparsesvd(together_wide_sparse, rank = 3)
+```
+
+Plot the columns of the U matrix against each other: 1 vs 2, 2 vs 3, 1
+vs 3. Note that column 1 and 3 are correlated, with a long tail of
+movies. 
+
+```{r}
+#1 vs 2
+plot(together_SVD$u[,1], together_SVD$u[, 2])
+
+#2 vs 3
+plot(together_SVD$u[,2], together_SVD$u[, 3])
+
+#1 vs 3
+plot(together_SVD$u[,1], together_SVD$u[, 3])
+```
+
+
+Investigate the names of these movies. What property can you
+infer about the top 6 movies in the tail w.r.t. column 1 and 3?
+
+```{r}
+#subset the list of movies 
+movies_subset <- movies %>%
+  filter(movieId %in% ratings$movieId)
+
+#top 6 in the tail for column 1
+c1_top6 <- order(together_SVD$u[,1], decreasing = TRUE)[1:6]
+
+movies_subset[c1_top6]
+
+#top 6 in the tail for column 3
+c3_top6 <- order(together_SVD$u[,3], decreasing = TRUE)[1:6]
+
+movies_subset[c3_top6]
+
+#The top movies are the most popular movies. These movies
+#are still watched by audiences to this day. 
+```
+
+Now look at the extremes of column 2 of U. What difference can you tell
+about the movies, between the smallest values and the largest values
+in column 2?
+
+```{r}
+#top 6 in the tail for column 2
+c2_top6 <- order(together_SVD$u[,2], decreasing = TRUE)[1:6]
+
+movies_subset[c2_top6]
+
+#bottom 6 for column 2
+c2_bottom6 <- order(together_SVD$u[,2], decreasing = FALSE)[1:6]
+
+movies_subset[c2_bottom6]
+
+#The largest values are more recent popular movies while
+#the smallest values are the older movies. 
+```
+
+Hint: there are a few movies which are in the `movies.csv` file, but
+are not in the `ratings.csv` file. I recommend to subset the list of
+movies first, which will help with this problem.
