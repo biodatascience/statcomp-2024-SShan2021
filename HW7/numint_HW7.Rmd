@@ -28,7 +28,7 @@ Hint: You should evaluate a number of intervals/nodes, decreasing the convergenc
 ## Solution: place relevant helper functions pertaining to integration here 
 
 #From the lecture 
-inner = function(gammai, yi, xi = cbind(rep(1,5), 1:5), beta, s2gamma, log = F) {
+inner = function(gammai, yi, xi = cbind(rep(1,5), 1:5), beta, s2gamma, log = T) {
 
   ## create vector holding return value f(gammai) with respect to each element of gammai
     val = rep(NA, length(gammai))
@@ -113,7 +113,6 @@ trap = function(intervals, range, yi, beta, s2gamma, trace = 0){
 logLik <- function(x, y, intervals, range){
   
   beta = x[1:2]
-
   s2gamma = x[3]
   ll = 0
   for(i in 1:max(y$subject)){
@@ -133,7 +132,7 @@ logLik <- function(x, y, intervals, range){
 ## Remember to print your primary results and use the following starting values
 beta = c(1.804, 0.165)
 s2gamma = 0.000225
-log_s2gamma = log(s2gamma)
+log_s2gamma = log(s2gamma) #use this because sometimes taking sqrt(s2gamma) fails b/c its too small
 alz = read.table("alzheimers.dat", header = T)
 
 fit = optim(
@@ -141,9 +140,9 @@ fit = optim(
   fn = logLik,
   method = "Nelder-Mead",
   y = alz,
-  intervals = 100,
+  intervals = 1000,
   range = c(-0.07, 0.085),
-  control = list(fnscale = -1)
+  control = list(fnscale = -1) #default is minimization
 )
 
 
