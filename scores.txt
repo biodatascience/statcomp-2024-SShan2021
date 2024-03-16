@@ -1,6 +1,0 @@
-HW1	5	5	5	
-HW2	4	5	5	Q1: The License in the Description file is not corrrect.
-HW3	5	5	5	5	
-HW4	5	5	5	5	
-HW5	5	5	5	
-HW6	4.5	5	Q1: Incorrect BFGS results because tol was set to be too high. Q2: Better to put I[yi = 0] on the power for the complete data likelihood. 
