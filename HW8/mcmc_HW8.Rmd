@@ -1,0 +1,152 @@
+---
+title: "HW 8 - MCMC"
+author: "Sophie Shan"
+date: "3/27/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Importance and Rejection Sampling
+
+Consider finding $\sigma^2 = E[X^2]$ when $X$ has the density that is proportional to $q(x) =\exp({−|x|^3/3})$.  Write the form of the integral pertaining to this expectation below, assuming the normalizing constant for $q(x)$ is $c$.
+
+Solution:
+
+$$\sigma^2 = E[X^2] = \int_{0}^{\infty} x^2 c \exp(-\frac{|x|^3}{3}) \, dx$$
+```{r}
+#library
+library(MASS)
+
+#plot function under integral
+x <- runif(10000, min = -10, max = 10)
+int <- x^2 * exp( - abs(x)^3/3)
+
+plot(x, int)
+
+#plot function f(x)
+
+f <- exp( - abs(x)^3/3)
+g <- dt(x, df = 3)
+plot(x, f) 
+points(x, g, col='red', pch=16)
+```
+
+## Find the estimate for $\sigma^2$ using importance sampling.  
+
+Write the expression for the integral using an importance sampling scheme, specifying your choice for the importance sampling density $g$ and reexpress the integral in terms of $X^2$, $g(x)$ and $q(x)$.  Then, write the form of the approximation of this integrand based on the importance samples drawn from $g$. Then, carry out this approximation of the expectation in the code below. 
+
+$$\int_{0}^{\infty} x^2 c \exp(-\frac{|x|^3}{3}) \, dx \propto \int_{0}^{\infty} x^2 \frac{\exp(-\frac{|x|^3}{3}) }{(1 + \frac{x^2}{3})^2} (1 + \frac{x^2}{3})^2 \, dx$$
+
+
+```{r}
+## Solution: write any helper functions here (q(x), etc)
+q <- function(x) {exp( - abs(x)^3/3)}
+
+#we choose t-distribution to be importance sampling function 
+g <- function(x) {dt(x, df = 3)} 
+
+## End Solution
+
+# set M
+M = 10^5
+
+## Solution: place primary code evaluating the expectation here with importance sampling
+
+#draw from importance sampling function
+y_imp <- rt(M, df = 3)
+
+#compute importance weights 
+w_star <- q(y_imp) / g(y_imp)
+  
+#compute MC estimate of integral
+mean(y_imp^2 * w_star)
+```
+
+## Repeat the procedure using rejection sampling. 
+
+Similar to before, write out the form of the integral and then its approximation, this time based on sampling from the target density $q(x)$.  Then, carry out this approximation of the expectation in the code below. 
+
+$$\int_{0}^{\infty} x^2 c \exp(-\frac{|x|^3}{3}) \, dx = \frac{1}{M} \sum_{i=1}^{M} x_i^2$$ 
+Note: These $x_i$ are the samples that are accepted through the rejection sampling process. 
+
+We use the same g(x) as above (t-distribution with 3 degrees of freedom), but we scale it by an alpha of 1/4 as the envelope function. 
+
+We sample $x_i$ from g(x) and we accept each sample if $e(x_i) > f(x_i)$.
+
+Repeat until we reach desired sample size. 
+
+```{r}
+#finding the envelope function 
+
+#plot function f(x)
+f <- exp( - abs(x)^3/3)
+g <- dt(x, df = 3)
+
+plot(x, f) 
+points(x, g*4, col='red', pch=16)
+```
+
+Hint:  We just need to show that $e$ exceeds the target density everywhere, and that the distribution $g$ that we draw samples from only differs from $e$ by a constant $\alpha$.  
+
+
+```{r}
+#functions
+q <- function(x) {exp( - abs(x)^3/3)}
+
+#we choose t-distribution to be importance sampling function 
+g <- function(x) {dt(x, df = 3)} 
+
+#set alpha 
+alpha <- 1/4
+
+# set M
+M = 10^5
+
+#specify max number of iterations 
+maxit = 100000
+
+## Solution: place primary code evaluating the expectation here with rejection sampling
+
+#Store accepted samples 
+samples_accepted <- rep(0, M)
+
+# start rejection algorithm
+i = index = 1
+
+while (i <= M & index < maxit) {
+  
+  # sample x from g(x)
+  x_proposed <- rt(1, df = 3)
+  
+  # sample Ui from standard uniform
+  Ui = runif(1)
+  
+  # calculate ratio
+  Lq = q(x_proposed)
+  Le = g(x_proposed)/alpha
+  r = Lq / Le
+  
+  # if Step 3 condition met, save sample
+  if (Ui < r) {
+    samples_accepted[i] = x_proposed
+    # update iterator
+    i = i + 1
+  }
+  
+  # keep track of total number of samples drawn
+  index = index + 1
+}
+
+# Compute the estimate of E[X^2]
+mean(samples_accepted^2)
+
+## End Solution
+
+
+
+```
+
+
