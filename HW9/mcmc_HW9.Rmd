@@ -1,0 +1,349 @@
+---
+title: "HW 9 - MCMC"
+author: "Sophie Shan"
+date: "04/03/2024"
+output: html_document
+---
+ 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Maximization of poisson GLMM from lecture
+
+Lets now maximize the poisson GLMM model given in lecture, now using an MCEM approach.  In a previous HW, you used numerical integration tools to approximate the likelihood for this model, then applied numerical optimization to obtain the estimates of the model parameters.  
+
+Here we wish to use MCEM, where in lecture we have already gone over a similar implementation using a rejection sampler in the E-step.  
+
+For this HW, please use a Metropolis Hastings Random Walk proposal distribution to approximate the Q-function in the E-step.   Specify your proposal distribution.  Write functions implementing the E-step, the M-step, and then write the main code for the MCEM algorithm.  
+
+Feel free to reuse/modify the lecture code to do this. However, you can implement the M-step and other parts of the EM algorithm however is most convenient to you.  Not required by any means, but it may be helpful from a speed perspective to recode the sampler into Rcpp. 
+
+
+
+```{r, warning=FALSE}
+#set working directory 
+setwd("/Users/sophieshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW9/")
+
+#load necessary libraries
+library(data.table)
+library(optimx)
+
+#read in the data, convert to data.table 
+alz = read.table("alzheimers.dat", header = T)
+alz = data.table(alz)
+```
+
+
+```{r}
+## Solution: place relevant helper functions pertaining to the E step here 
+
+## function for the log likelihood for ith subject, x is the proposal or current value for gammai
+f = function(x, yi, Xi, betat, s2gammat) {
+  
+  # calculate lambdai
+  lambdai = exp(Xi %*% betat + x)
+  
+  # sum across repeated observations for poisson portion
+  lli = sum(dpois(yi, lambdai, log = T))
+  
+  # dont forget to include the MVN log likelihood
+  lli = lli  + dnorm(x, sd = sqrt(s2gammat), log = T)
+  
+  return(lli)
+}
+
+## log proposal density function
+g = function(x, s2gammat) {
+  dnorm(x, sd = sqrt(s2gammat), log = T)
+}
+
+## proposal function, N(0, s2gamma)
+g.sim = function(s2gammat) {
+  rnorm(1, 0, sd = sqrt(s2gammat))
+}
+
+# random walk 
+h.sim = function() {
+  rnorm(1, 0, sd = 2)
+}
+
+## calculate MH ratio given f and g, x is the proposal, xt is the current value from the chain
+R = function(xt, x, f, g, yi, Xi, betat, s2gammat) {
+  # log numerator - log denominator
+  logR = (f(x, yi, Xi, betat, s2gammat) + g(xt, s2gammat)) - (f(xt, yi, Xi, betat, s2gammat) + g(x , s2gammat))
+  R = exp(logR)
+  return(R)
+}
+
+
+mh.independence.sampler.i = function(yi, 
+                                     Xi = cbind(rep(1,5), 1:5), 
+                                     M, 
+                                     maxit,
+                                     betat, 
+                                     s2gammat){
+  
+  # initialize the chain vector
+  x.indep.chain = rep(0, M)
+  
+  x.indep.chain[1] = g.sim(s2gammat)
+  
+  # now start chain
+
+  m = 1
+  
+  while(m < M && m < maxit){
+    
+    # set the value at current iteration of the chain to variable xt
+    xt = x.indep.chain[m]
+    
+    # random walk
+    x = xt + h.sim()
+    
+    # calculate MH ratio 
+    r = min(
+            R(xt, x, f, g, yi, Xi, betat, s2gammat),
+            1
+          )
+    
+    # Generate draw from bernoulli(p).
+    keep = rbinom(1, 1, r)
+    
+    if(keep == 1){
+      # if keep = 1, then set next iteration equal to then proposal
+      x.indep.chain[m+1] = x
+
+    }else{
+      # otherwise, carry over value from the current iteration
+      x.indep.chain[m+1] = xt
+    }
+    
+    m = m + 1
+  }
+  
+  return(list(gammai = x.indep.chain))
+}
+
+## Returns mhrw samples matrix (n x M)
+
+mh.independence.sampler.all = function(data,
+                                       M,
+                                       maxit,
+                                       betat,
+                                       s2gammat,
+                                       burn.in) {
+  
+  # create n x M matrix to hold samples for each subject
+  mhrw.samples = matrix(NA, nrow = 22, ncol = M-burn.in)
+  
+  ## looping over n subjects
+  for (i in 1:22) {
+    
+    # draw M samples from the posterior for gamma_i
+    mhrw.samples.i =
+      mh.independence.sampler.i(
+        yi = data[subject == i, words],
+        M = M,
+        maxit = maxit,
+        betat = betat,
+        s2gammat = s2gammat
+      )$gammai
+    
+    #discard the the burn.in
+    mhrw.samples.i <- mhrw.samples.i[-(1:burn.in)] 
+    
+    # save to matrix
+    mhrw.samples[i,] = mhrw.samples.i
+    
+  }
+  
+  ## return matrix
+  return(mhrw.samples)
+  
+}
+## End Solution
+```
+
+
+
+```{r}
+## Solution: place relevant helper functions pertaining to the M step here 
+# datai:  observed data (alz) pertaining to the i'th subject
+# gammai: M draws pertaining to gamma i
+
+Qi = function(datai,
+              xi = cbind(rep(1, 5), 1:5),
+              betat,
+              s2gammat,
+              gammai) {
+  # 5 x 1 vector
+  yi = datai$words
+  
+  # get M
+  M = length(gammai)
+  
+  # Let use a vectorized version instead. 
+  # create 5 x M matrix, x_beta_mat
+  # each column is xi %*% betat, just repeated
+  x_beta_mat = xi %*% matrix(betat, nrow = length(betat), ncol = M)
+  
+  # create 5 x M matrix, x_beta_plus_gamma_mat
+  # m'th column is xi %*% betat + gammai[m]
+  x_beta_plus_gamma_mat = sweep(x_beta_mat, 2 , gammai, "+")
+  
+  # calculate lambda (5 x M matrix)
+  lambdai = exp(x_beta_plus_gamma_mat)  
+  
+  # calculate Q
+  ymat = matrix(yi, nrow = length(yi), ncol = M)
+  qi = sum(dpois(ymat, lambda = lambdai, log = T)) + 
+    sum(dnorm(gammai, mean = 0,sd = sqrt(s2gammat),log = T))
+  
+  # divide sum by M
+  qi = qi / M
+  
+  ## return values
+  return(qi)
+}
+
+Q = function(data,
+             betat,
+             s2gammat,
+             mhrw.samples,
+             logs2gammat = F) {
+  
+  # backtranform if maximizing s2gammat on log scale
+  if (logs2gammat == T) {
+    s2gammat = exp(s2gammat)
+  }
+  
+  # initialize sum
+  Q = 0
+  
+  # loop over subjects
+  for (i in 1:22) {
+    Q = Q + Qi(data[data$subject == i, ],
+               betat = betat,
+               s2gammat = s2gammat,
+               gammai = mhrw.samples[i, ])
+  }
+  
+  # return
+  return(Q)
+}
+
+## End Solution
+
+
+```
+
+
+```{r, warning=FALSE}
+## Solution: place primary code for the MCEM algorithm here, calling functions in the above two sections
+## Remember to print your primary results and use the following starting values, and evaluate chain diagnostics for the final model
+
+# set initial parameters
+  tol = 10^-5
+  maxit = 100
+  iter = 0
+  eps = 10000
+  qfunction = -10000 # using Qfunction for convergence
+  
+# starting values, taken from rejection sampling example
+  beta = c(1.804, 0.165) 
+  s2gamma =  0.000225 + .01 
+
+# Length of chain
+  M = 10000
+  
+# burn in
+burn.in = 2000
+
+#algorithm
+#algorithm
+while(eps > tol & iter < maxit){
+  
+  ## save old qfunction
+  qfunction0 = qfunction
+  
+  ## Begin E-step
+  
+  # update mhrw.samples column with the new draws
+  mhrw.samples = mh.independence.sampler.all(
+    data = alz,
+    M = M,
+    maxit = 100 * M,
+    betat = beta,
+    s2gammat = s2gamma,
+    burn.in = burn.in
+  )
+  
+  ## evaluate  qfunction given drawn samples, current param estimates
+  qfunction = Q(data = alz, 
+                betat = beta, 
+                s2gammat = s2gamma, 
+                mhrw.samples = mhrw.samples
+  )
+  
+  ## End E-step
+  
+  
+  ## Calculate relative change in qfunction from prior iteration
+  eps  = abs(qfunction - qfunction0) / abs(qfunction0)
+  
+  
+  ## Start M-step : nelder mead
+  fit = optimx(
+    # initial values for the parameters
+    par = c(beta, s2gamma), # maximizing s2gamma on log scale! 
+    # Q function wrapper
+    fn = function(x, data, mhrw.samples){
+      Q(data = alz, 
+        betat = x[1:length(beta)], 
+        s2gammat = x[length(beta)+1], 
+        mhrw.samples = mhrw.samples
+      )   
+    }, 
+    method = "Nelder-Mead",
+    data = data,
+    mhrw.samples = mhrw.samples,
+    control = list(
+      maximize = T, 
+      abstol= tol
+    )
+  )
+  
+  # extract parameters
+  beta = as.numeric(fit[1:length(beta)])
+  s2gamma = as.numeric(fit[length(beta)+1])
+  
+  ## End M-step
+  
+  
+  ## update iterator
+  iter = iter + 1
+  if(iter == maxit) warning("Iteration limit reached without convergence")
+  
+  
+  ## print out info to keep track
+  cat(sprintf("Iter: %d Qf: %.3f s2gamma: %f beta0: %.3f beta0:%.3f eps:%f\n",iter, qfunction,s2gamma, beta[1],beta[2], eps))
+}
+
+# Evaluate chain diagnostics for the final model
+par(mfrow=c(1,2))
+
+# Sample Path: For 1st subject
+plot(mhrw.samples[1,], ylim=c(0,1), type="l",
+     ylab="gammai", xlab="iteration t",
+     main = "Sample path for N(0, s2gamma) Prop. Dist.")
+
+# Histogram
+hist(mhrw.samples[1,],breaks=20,xlab="delta",
+     main="Hist. for N(0, s2gamma) Prop. Dist.")
+
+## End Solution
+
+```
+
+
