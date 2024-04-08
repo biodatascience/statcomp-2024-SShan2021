@@ -1,0 +1,1 @@
+HW7	4	Nice try on approximating the integral from scratch in E-step. I recommend you review the "Gaussian Quadrature Rule" part in lecture note. Hope it helps. 
