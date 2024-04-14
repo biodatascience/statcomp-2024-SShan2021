@@ -1,0 +1,126 @@
+---
+title: "Homework 11 - Machine learning essentials"
+author: "Sophie Shan"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: html_document
+---
+
+# Use of `caret` with various methods
+
+Run three machine learning models over the following training dataset
+with features `x` and labels `y`. You can use default tuning, e.g.
+bootstrap based resampling for tuning, as set by `trainControl`.
+
+* SVM with radial kernel `"svmRadial"`
+* Random forest `"rf"`
+* Gradient boosting machine `"gbm"` (use `verbose=FALSE`)
+
+Record the time to train, and the best Kappa value for each method
+over the tuning grid (`rf` does not use tuning parameters via
+`train` for this dataset). Which method obtains the best Kappa?
+
+Finally, make a `pointrange` plot (see `geom_pointrange`), with the
+optimal Kappa and the SD for the optimal Kappa. Is there a clear
+winner, or all the methods mostly overlapping?
+
+```{r}
+#########################################
+#install and load packages
+#########################################
+#install.packages("caret")
+#install.packages("microbenchmark")
+#install.packages("tidyverse")
+
+library("caret")
+library("microbenchmark")
+library("tidyverse")
+```
+
+```{r}
+#########################################
+#dataset 
+#########################################
+data(faithful)
+n <- nrow(faithful)
+faithful <- data.frame(lapply(faithful, scale))
+plot(faithful)
+faithful$cl <- factor(kmeans(faithful, centers=2)$cluster)
+plot(faithful[,1:2], col=faithful$cl)
+
+# make it more challenging
+set.seed(1)
+faithful[,1] <- faithful[,1] + rt(n,df=5)/2
+faithful[,2] <- faithful[,2] + rt(n,df=5)/2
+plot(faithful[,1:2], col=faithful$cl)
+x <- faithful[,1:2]
+y <- faithful[,3]
+```
+```{r}
+#########################################
+#fit methods 
+#########################################
+#set default tuning
+trCtl <- trainControl(savePredictions = TRUE)
+
+#SVM with radial kernel `"svmRadial"`
+rfit_1 <- train(x, y, method="svmRadial", trControl=trCtl)
+
+#Random forest `"rf"`
+rfit_2 <- train(x, y, method = "rf", trControl=trCtl)
+
+#Gradient boosting machine `"gbm"` (use `verbose=FALSE`)
+rfit_3 <- train(x, y, method = "gbm", verbose = FALSE, trControl=trCtl)
+```
+
+```{r}
+#########################################
+#Record the time to train
+#########################################
+microbenchmark(rfit_1, rfit_2, rfit_3)
+
+```
+
+```{r}
+#########################################
+#best Kappa value for each method over the tuning grid
+#########################################
+best_svd <- rfit_1$results %>%
+  filter(Kappa == max(Kappa))
+
+best_rf <- rfit_2$results %>%
+  filter(Kappa == max(Kappa))
+
+best_gbm <- rfit_3$results %>%
+  filter(Kappa == max(Kappa))
+
+k <- as.data.frame(cbind(c("svd", "rf", "gbm"), 
+      c(round(best_svd$Kappa,3), 
+        round(best_rf$Kappa,3), 
+        round(best_gbm$Kappa,3)),
+      c(round(best_svd$KappaSD,3), 
+        round(best_rf$KappaSD,3), 
+        round(best_gbm$KappaSD,3))))
+colnames(k) <- c("Method", "Kappa", "SD")
+k$Kappa <- as.numeric(k$Kappa)
+k$SD <- as.numeric(k$SD)
+k
+
+#Which method obtains the best Kappa? SVD
+```
+
+
+```{r}
+#########################################
+#make a `pointrange` plot (see `geom_pointrange`), with the
+#optimal Kappa and the SD for the optimal Kappa.
+#########################################
+ggplot(data = k, aes(x = Method, y = Kappa)) +
+  geom_pointrange(aes(ymin = Kappa - SD, ymax = Kappa + SD))   
+
+#Is there a clear winner, or all the methods mostly overlapping?
+#Methods mostly overlapping
+```
+
+
+
+
