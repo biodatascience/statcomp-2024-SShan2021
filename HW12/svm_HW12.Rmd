@@ -1,0 +1,191 @@
+---
+title: "Homework 12 - Support Vector Machines"
+author: "Sophie Shan"
+date: "`r format(Sys.time(), '%m/%d/%Y')`"
+output: html_document
+---
+
+# Credit card dataset
+
+We will be working in this homework with a popular machine learning
+dataset about credit card fraud. Go to the following link and download
+the CSV:
+
+<https://www.openml.org/d/1597>
+
+The data description is 
+
+> The datasets contains transactions made by credit cards in September
+> 2013 by european cardholders. This dataset present transactions that
+> occurred in two days, where we have 492 frauds out of 284,807
+> transactions. The dataset is highly unbalanced, the positive class
+> (frauds) account for 0.172% of all transactions. 
+
+Now we begin by reading into R:
+
+```{r, warning=FALSE}
+############################
+#install necessary libraries
+############################
+#install.packages("farff")
+#install.packages("readr")
+#install.packages("tidyverse")
+#install.packages("dplyr")
+#install.packages("caret")
+#install.packages("RANN")
+
+library("farff")
+library("readr")
+library("tidyverse")
+library("dplyr")
+library("caret")
+library("RANN")
+```
+
+```{r}
+############################
+#set working directory
+############################
+setwd("/Users/sophieshan/Desktop/OneDrive - University of North Carolina at Chapel Hill/UNC/Spring 2024/BIOS 735/Homework Assignments/HW12/")
+```
+
+```{r}
+z <- readARFF("phpKo8OWT.arff")
+dim(z)
+table(z$Class)
+y <- gsub("\\'","",z$Class)
+x <- as.data.frame(z[,-31])
+```
+
+We will deal with the class imbalance for this homework just by
+downsampling the non-fraud cases. As we saw in the random forest
+homework there are other approaches including custom cost functions. 
+
+```{r}
+set.seed(1)
+idx <- c(sample(which(y == "0"), sum(y == "1")), which(y == "1"))
+y <- y[idx]
+x <- as.data.frame(scale(x[idx,]))
+table(y)
+```
+
+The homework assignment is to run linear and radial basis function SVM
+on the dataset, and report the Kappa for both models. For RBF, you
+should plot the Kappa over the different values for the cost
+function (`metric="Kappa"`). 
+
+```{r}
+############################
+#linear kernel SVM
+############################
+tg <- data.frame(C=50)
+fit <- train(x, y, method="svmLinear", tuneGrid=tg)
+fit$results
+```
+
+```{r}
+############################
+#radial basis function SVM
+############################
+rfit <- train(x, y, method = "svmRadial")
+rfit$results %>%
+  ggplot(aes(x=C,
+             y=Kappa)) +
+  geom_line()
+```
+
+Now, suppose we want to examine plots of the decision boundary in the
+feature space. We can only look at two features at a time in a scatter
+plot. What are the two most important variables for the SVMs (they are
+the same for both SVMs)?
+
+```{r}
+############################
+#two most important variables
+############################
+varImp(fit) #linear SVMs: V14, V12 
+varImp(rfit) #radial SVMs: V14, V12 
+
+#Yes, the most important variables are the same for both SVMs.
+```
+
+Make a scatterplot for each method that includes: the data points in this two
+dimensional space, colored by the "0" and "1" prediction, and the decision
+boundary. In class, we simply used `expand.grid` to build the
+`newdata` that was fed to `predict`. Start with this approach, using a
+grid of 40 points from -4 to 4 for the two most important variables,
+but before you attempt to run `predict` (which would give an error), read further:
+
+In this case, we have to worry about the other 30 - 2 = 28
+variables. If we put in 0's, this would not be typical observations,
+and we will get strange results.
+
+Instead, you should put `NA` for the other variables, and use
+`preProcess` with KNN imputation (alone, don't re-scale), to impute
+the other values. Then use this data to run `predict` and define the
+decision boundary. This is a simpler approach compared to the
+integration approach taken by `plot.gbm` to produce marginal plots
+that we saw when we looked at boosting, but it is sufficient to get a
+sense of the decision boundary in 2D for "typical" values of the other
+covariates. 
+
+```{r}
+############################
+#setup for plots 
+############################
+#using a grid of 40 points from -4 to 4
+s <- seq(from=-4,to=4,length=40)
+grid <- expand.grid(V14=s,V12=s)
+
+#put NA for the other variables
+grid[ , setdiff(names(x), c("V14", "V12"))] <- NA
+grid <- grid %>% 
+  relocate(V14, .before = V15) %>%
+  relocate(V12, .before = V13)
+x.pp <- preProcess(x, method=c("knnImpute"))
+x.new <- predict(x.pp, grid)
+
+#run predict 
+y.Linear <- predict(fit, newdata=x.new)
+y.Radial <- predict(rfit, newdata=x.new)
+
+#add to the x.new
+x.new$y.Linear <- y.Linear
+x.new$y.Radial <- y.Radial
+
+#combined dataframe
+dat <- data.frame(y,x$V14,x$V12)
+colnames(dat) <- c("y", "V14", "V12")
+```
+
+
+```{r}
+############################
+#linear kernel SVM
+############################
+sv <- as.data.frame(x[fit$finalModel@SVindex, c("V14", "V12")]) # the "support vectors"
+x.new$yy.Linear <- 2*(as.numeric(x.new$y.Linear) - 1.5)
+
+
+ggplot(dat, aes(V14, V12 ,col= y)) + geom_point() + 
+  geom_point(data=sv, col="black", size=5, shape=21) +
+  geom_contour(data=x.new, aes(z=yy.Linear), breaks=0, col="black") 
+```
+
+```{r}
+############################
+#radial basis function SVM
+############################
+rsv <- as.data.frame(x[rfit$finalModel@SVindex, c("V14", "V12")])
+x.new$yy.Radial <- 2*(as.numeric(x.new$y.Radial) - 1.5)
+
+ggplot(dat, aes(V14, V12 ,col= y)) + geom_point() + 
+  geom_point(data=rsv, col="black", size=5, shape=21) +
+  geom_contour(data=x.new, aes(z = yy.Radial), breaks=0, col="black") 
+```
+
+Do you see a big difference in the decision boundary for linear vs RBF
+SVM? 
+
+Doesn't seem to be a big difference between the who decision boundaries. 
+
