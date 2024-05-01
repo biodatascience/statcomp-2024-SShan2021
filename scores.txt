@@ -1,2 +1,3 @@
 HW7	4	Nice try on approximating the integral from scratch in E-step. I recommend you review the "Gaussian Quadrature Rule" part in lecture note. Hope it helps. 
 HW8	3	Part2: the density formula of t distribution is wrong and the answer is off. Part 3: the density of t distribution is wrong.
+HW9	5	You can get the estimates(in M-step) with closed form. Nelder-Mead method gives you a less accurate result there.
